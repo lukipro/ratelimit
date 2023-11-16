@@ -40,9 +40,9 @@ type YamlRoot struct {
 }
 
 type rateLimitDescriptor struct {
-	descriptors  map[string]*rateLimitDescriptor
-	limit        *RateLimit
-	wildcardKeys []string
+	descriptors    map[string]*rateLimitDescriptor
+	limit          *RateLimit
+	wildcardValues []string
 }
 
 type rateLimitDomain struct {
@@ -189,9 +189,9 @@ func (this *rateLimitDescriptor) loadDescriptors(config RateLimitConfigToLoad, p
 		newDescriptor.loadDescriptors(config, newParentKey+".", descriptorConfig.Descriptors, statsManager)
 		this.descriptors[finalKey] = newDescriptor
 
-		// Preload keys ending with "*" symbol.
-		if finalKey[len(finalKey)-1:] == "*" {
-			this.wildcardKeys = append(this.wildcardKeys, finalKey)
+		// Preload values starting or ending with "*" symbol.
+		if strings.HasPrefix(descriptorConfig.Value, "*") || strings.HasSuffix(descriptorConfig.Value, "*") {
+			this.wildcardValues = append(this.wildcardValues, descriptorConfig.Value)
 		}
 	}
 }
@@ -313,9 +313,14 @@ func (this *rateLimitConfigImpl) GetLimit(
 		logger.Debugf("looking up key: %s", finalKey)
 		nextDescriptor := descriptorsMap[finalKey]
 
-		if nextDescriptor == nil && len(prevDescriptor.wildcardKeys) > 0 {
-			for _, wildcardKey := range prevDescriptor.wildcardKeys {
-				if strings.HasPrefix(finalKey, strings.TrimSuffix(wildcardKey, "*")) {
+		if nextDescriptor == nil && len(prevDescriptor.wildcardValues) > 0 {
+			for _, wildcardValue := range prevDescriptor.wildcardValues {
+				wildcardKey := entry.Key + "_" + wildcardValue
+				if strings.HasSuffix(entry.Value, strings.TrimPrefix(wildcardValue, "*")) {
+					nextDescriptor = descriptorsMap[wildcardKey]
+					break
+				}
+				if strings.HasPrefix(entry.Value, strings.TrimSuffix(wildcardValue, "*")) {
 					nextDescriptor = descriptorsMap[wildcardKey]
 					break
 				}
